@@ -1,48 +1,90 @@
+#Configure provider with access credentials 
 provider "aws" {
-    region = "eu-central-1"
-    access_key = "AKIA5IO5TXW7F7755A4V"
-    secret_key = "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"
-}
-variable "cidr_blocks" {
-    type          = list(object({
-       cidr_block = string 
-       name       = string
-     }))
-     description  = "cidr block and name tags for both vpc and subnet"
+    shared_config_files      = ["C:/Users/Kimo Hero/.aws/config"]
+    shared_credentials_files = ["C:/Users/Kimo Hero/.aws/credentials"]
 }
 
-resource "aws_vpc" "mainvpc" {
-  cidr_block = var.cidr_blocks[0].cidr_block
+# Variables
+variable "cidr_block_vpc" {}
+variable "cidr_block_subnet" {}
+variable "cidr_block_rt" {}
+variable "my_ip" {}
+variable "avail_zone" {}
+variable "app_prefix" {}
+
+# create virtual private cloud 
+resource "aws_vpc" "app-vpc" {
+  cidr_block = var.cidr_block_vpc
+
   tags = {
-      Name: var.cidr_blocks[0].name
+    Name = "${var.app_prefix}-vpc"
   }
 }
 
-resource "aws_subnet" "mainsubnet" {
-  vpc_id     = aws_vpc.mainvpc.id
-  cidr_block = var.cidr_blocks[1].cidr_block
-  availability_zone  = "eu-central-1a"
-  tags = {
-      Name: var.cidr_blocks[1].name
+#create subnet in the vpc 
+resource "aws_subnet" "app-subnet"{
+  vpc_id = aws_vpc.app-vpc.id
+  cidr_block = var.cidr_block_subnet
+  availability_zone = var.avail_zone
+    tags = {
+    Name = "${var.app_prefix}-subnet"
   }
 }
 
-data "aws_vpc" "existing_vpc" {
-    default = true
-}
+#create internet gateway 
+resource "aws_internet_gateway" "app-igw" {
+  vpc_id = aws_vpc.app-vpc.id
 
-resource "aws_subnet" "mainsubnet2" {
-  vpc_id     = data.aws_vpc.existing_vpc.id
-  cidr_block = "172.31.48.0/20"
-  availability_zone  = "eu-central-1a"
   tags = {
-      Name: "subnet2-dev"
+    Name = "${var.app_prefix}-igw"
   }
 }
 
-# output "subnet2" {
-#   value       = "mainsu bnet2"
-#   sensitive   = true
-#   description = "description"
-#   depends_on  = []
-# }
+#create routing table 
+resource "aws_route_table" "app-rt" {
+  vpc_id = aws_vpc.app-vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.app-igw.id
+  }
+
+  tags = {
+    Name = "${var.app_prefix}-rt"
+  }
+}
+
+resource "aws_route_table_association" "a" {
+  subnet_id      = aws_subnet.app-subnet.id
+  route_table_id = aws_route_table.app-rt.id
+}
+
+# create security group 
+resource "aws_security_group" "app-sg" {
+  vpc_id      = aws_vpc.app-vpc.id
+
+  ingress {
+    from_port        = 22
+    to_port          = 22
+    protocol         = "tcp"
+    cidr_blocks      = [var.my_ip]
+  }
+
+    ingress {
+    from_port        = 8080
+    to_port          = 8080
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.app_prefix}-sg"
+  }
+}

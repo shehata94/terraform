@@ -11,6 +11,8 @@ variable "cidr_block_rt" {}
 variable "my_ip" {}
 variable "avail_zone" {}
 variable "app_prefix" {}
+variable "instance_type" {}
+variable "key_file_path" {}
 
 # create virtual private cloud 
 resource "aws_vpc" "app-vpc" {
@@ -87,4 +89,56 @@ resource "aws_security_group" "app-sg" {
   tags = {
     Name = "${var.app_prefix}-sg"
   }
+}
+
+#create ec2 instance 
+resource "aws_instance" "app-server"{
+  ami = data.aws_ami.app-ami.id
+  instance_type = var.instance_type
+  availability_zone = var.avail_zone
+  associate_public_ip_address = true
+
+  key_name = aws_key_pair.key.key_name
+
+  vpc_security_group_ids = [aws_security_group.app-sg.id]
+  subnet_id = aws_subnet.app-subnet.id
+
+
+  tags = {
+    Name = "${var.app_prefix}-server"
+  }
+}
+
+#get ami data
+data "aws_ami" "app-ami" {
+  most_recent      = true
+  owners           = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+output "aws_ami_id" {
+  value   = data.aws_ami.app-ami.id
+}
+
+
+
+
+#create key pair to ssh into sever
+resource "aws_key_pair" "key" {
+  key_name   = "server-key"
+  public_key = file(var.key_file_path)
 }
